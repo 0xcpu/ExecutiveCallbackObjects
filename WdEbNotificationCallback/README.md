@@ -4,7 +4,7 @@ The main function of this callback is to notify `WdFilter` when a `KnonwBadImage
 
 To trigger this callback the parameter [`BDCB_CALLBACK_TYPE`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ne-ntddk-_bdcb_callback_type) must be set to `BdCbStatusUpdate` (A status update provided by the system to a boot-start driver) and the structure [`_BDCB_IMAGE_INFORMATION`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-_bdcb_image_information) must have the field Classification set to `BdCbClassificationKnownBadImage`.
 
-![WdBoot ExNotifyCallback](https://cdn1.imggmi.com/uploads/2019/11/5/32fb7fde2a79d44a3d24a98d88c92ab3-full.png)
+![WdBoot ExNotifyCallback](images/CallExNotifyCallback.png)
 
 In the previous image we can see the call that executes `WdBoot` to notify the callback routines. Argument1 is a pointer to MpEbGlobals.Magic and Argument2 is set to 0x28. The MpEbGlobals structure has the following definition
  
@@ -47,8 +47,8 @@ As we can see, this structure has some quite interesting fields that we will be 
 
 - As we can see on MP_EP_GLOBALS, if we go back in the structure from the Magic field we can get the value of IoUnregisterBootDriverCallback. This function will be called when `WdBoot` is unloaded from memory. So there's a chance to change to change that pointer to our own function (Kinda hooking) so our function will be automatically called when `WdBoot`is unloaded from memory. Of course there's a big downside here, this callback is execute only when a `KnonwBadImage` is found, and of course if this happens the system will probably Bug Check. So not really a big deal here.
 
-![MpEbUnload](https://cdn1.imggmi.com/uploads/2019/11/5/e8d769eb462f5429f868550ee95d1fbc-full.png)
+![MpEbUnload](images/MpEbUnload.png)
 
 - This one needs further investigation on `WdFilter`, but it may be possible to access the DriversListEntry(Refer to the post to see the structure used in this field) and modify the Classification that was set by the ELAM driver. This could possibly lead to `WdFilter` believing this a `KnownGoodImage`, since `WdFilter` will use this information too. The downside here is that the routine registered by `WdFilter` execute before our registered routine, but this could probably be changed modifying the CALLBACK_OBJECT.CallbackFunctions LIST_ENTRY in order to make our routine first. (**This still needs investigation**)
 
-![WdFilter Saving DriverClassification](https://cdn1.imggmi.com/uploads/2019/11/5/794a318e4a1e40bded7f1e082f24ae0d-full.png)
+![WdFilter Saving DriverClassification](images/WdFilterCopyData.png)
