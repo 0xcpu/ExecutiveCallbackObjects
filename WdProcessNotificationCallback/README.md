@@ -6,11 +6,11 @@
 But `WdFilter` is a bit special, because the callback object can be named `MpProcessNotificationCallback`(observe the difference of 2 characters in the prefix). This change of behavior
 is controlled byte a `boolean` flag(exhausting his existence at offset `+0x6B1`) in `MpData` context structure maintained by the driver - `MpData`. If the value of the `boolean` flag is `1`, look
 for `WdProcessNotificationCallback`...
-![obj_creation](https://cdn1.imggmi.com/uploads/2019/10/22/ce736cd1eb73921f7d0006bacfd7bb44-full.png)
+![obj_creation](images/obj_creation.png)
 
 Unsurprisingly, the code path that ends in notifying this object goes through `WdFilter.sys` and last 4 stack frames, in case of process creation or termination, can be stamped as:
 
-![stack_frames](https://cdn1.imggmi.com/uploads/2019/10/22/9ff6cedff84e3fa9ebb8e0c44b7c4e41-full.png)
+![stack_frames](images/stack_frames.png)
 
 Before going further, it is necessary to know when our callback will receive a notification for the callback object we've registered. Extending the thought from above and observing that there are _5_
 calls to `ExNotifyCallback` having their first argument `MpData + 0x6D8`, standing for `CallbackObject` parameter as presented in [MSDN](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exnotifycallback), it is possible to affirm that the following operations are going to "disturb" our callback:
@@ -170,7 +170,7 @@ Ok, next are following a couple of other interesting function calls, let's welco
 Just from their names we see how appealing this functions are, but for the sake of keeping these notes as short as possible(and easy to understand) and not reversing the whole driver we're not going to dig into them now.
 The next station(/call) is our destination, it's where we're meeting - [ExNotifyCallback](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-exnotifycallback). We already know what is going to be the first argument, the third one is `NULL` for both cases(_process creation_ and _process termination_). We walked through to see what is going to be served for `Argument1`(second parameter). To understand it easier let's see a snippet from the code:
 
-![proc_create_notif](https://cdn1.imggmi.com/uploads/2019/10/27/2bb917e047f0862ab64cc6b1e5e6c248-full.png)
+![proc_create_notif](images/proc_create_notif.png)
 
 So this is the structure filled with sweets that we're going to get a pointer to. In a rush we quickly sputter a definition:
 ```C
@@ -186,7 +186,7 @@ typedef struct _WD_PS_NOTIFY_INFO
 
 But the sparkling thing in all that structure seems to be it's second field(highlighted in the image). And we think that's because we have a pointer to _parent pid_ instead of having it's value. Moreover that pointer is to a stack location. Why is that so?
 
-![proc_create_stack](https://cdn1.imggmi.com/uploads/2019/10/27/72c8bde650faf10a5036a1d881c6b4fc-full.png)
+![proc_create_stack](images/proc_create_stack.png)
 
 So, in our opinion that second field is a pointer because this way we can get access to more information abstracted by the pointer to `MP_PROCESS_CONTEXT`. An updated structure definition and image:
 
@@ -198,29 +198,29 @@ typedef struct _WD_PS_NOTIFY_INFO_EX
     WD_PS_NOTIFY_INFO   WdPsNotifyInfo;
 } WD_PS_NOTIFY_INFO_EX, *PWD_PS_NOTIFY_INFO_EX;
 ```
-![proc_create_notif2](https://cdn1.imggmi.com/uploads/2019/10/27/21b8c5fbf59bfa2855418eb56dd7038f-full.png)
+![proc_create_notif2](images/proc_create_notif2.png)
 
 Until now we were in the realm of _process creation_. For _process termination_ there's not much to say, only two fields carrying useful information, `Pid` and `OperationType`.
 
-![proc_termination](https://cdn1.imggmi.com/uploads/2019/10/27/ab31edd8c1ce29123da296ec78b691a3-full.png)
+![proc_termination](images/proc_termination.png)
 
 When it comes to _set trusted process_ and _set untrusted process_ there's no much difference between them, both can be identified by `OperationType` being equal to _3_:
-![set_trusted](https://cdn1.imggmi.com/uploads/2019/10/27/19ef7c588037fd38a56cde3c270df604-full.png)
-![set_untrusted](https://cdn1.imggmi.com/uploads/2019/10/27/bb17b979ae6302f39a36884a90327113-full.png)
+![set_trusted](images/set_trusted.png)
+![set_untrusted](images/set_untrusted.png)
 
 Both changes in state can be triggered from `MpUpdateProcessesWithExclusions` or `MpSetProcessInfoByContext`. State of being _trusted_ or _untrusted_ can be also obtained from `MP_PROCESS_CONTEXT.ProcessFlags` by checking _7th_ bit. For example this is how it is checked inside `MpSetUntrustedProcess`:
-![set_untrusted_check](https://cdn1.imggmi.com/uploads/2019/10/28/f89fc1bf4607ae241d09768feb3ad17c-full.png)
+![set_untrusted_check](images/set_untrusted_check.png)
 
 At last, _refresh process notifications_ in essence is an iteration over the list of process contexts with the purpose of sending a notification regarding fields that are also present in _set trusted process_ and _set untrusted process_. It is being called from `MpNriNotificationCallback`.
 
-![refresh_proc](https://cdn1.imggmi.com/uploads/2019/10/28/af6e8b4d50e640e160dc2b91c2b329d8-full.png)
+![refresh_proc](images/refresh_proc.png)
 (_SOTSOG_)
 
 ### POC
 
 [WdProcessNotificationCallback](WdProcessNotificationCallback) is a simple proof of concept driver to show how this feature can be used.
 
-![poc](https://cdn1.imggmi.com/uploads/2019/10/28/b14af8bc5f9d18c52ed367860038b4ac-full.png)
+![poc](images/poc.png)
 
 **To our knowledge, the only registered callback function for this callback object belongs to `WdNisDrv.sys` and is named `process_notification_callback`**
 

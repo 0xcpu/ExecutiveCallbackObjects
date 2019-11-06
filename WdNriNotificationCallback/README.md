@@ -4,8 +4,8 @@
 
 The callback object can be created in 2 places: `WdFilter.sys` and `WdNisDrv.sys`. But a callback function is registered only in `WdFilter.sys`, last time we checked the callback was named `MpNriNotificationCallback`. The callback in itself isn't very interesting and in essence is just a wrapper around `MpRefreshProcessNotifications`, which we already sketched in [WdProcessNotificationCallback](../WdProcessNotificationCallback). Callback's code is provided just as a future reference:
 
-![callback](https://cdn1.imggmi.com/uploads/2019/10/31/16df14a5f82413432516c19d75e7d887-full.png)
+![callback](images/callback.png)
 
 We observed that this callback object is notified from `WdNisDrv.sys` - `set_process_exceptions(PMP_DATA , PIRP *)`.
 
-![callback_notif](https://cdn1.imggmi.com/uploads/2019/10/31/6ebf1a55f8ec319a2260290c58b014c3-full.png)
+![callback_notif](images/callback_notif.png)
