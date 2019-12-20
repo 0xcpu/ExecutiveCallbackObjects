@@ -38,7 +38,7 @@ struct __declspec(align(4)) MP_EP_GLOBALS
 };
 ```
 > Sorry for the own advertisement 😆
-> but if you want to learn more about `WdBoot`check this post https://n4r1b.netlify.com/en/posts/2019/10/understanding-wdboot-windows-defende-elam/
+> but if you want to learn more about `WdBoot`check this post https://n4r1b.netlify.com/en/posts/2019/11/understanding-wdboot-windows-defender-elam/
 
 As we can see, this structure has some quite interesting fields that we will be able to access if we register a routine for this callback.
 
