@@ -1,0 +1,86 @@
+;
+; PgCbUtil.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Sample ; TODO: edit Class
+ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
+Provider=%ManufacturerName%
+CatalogFile=PgCbUtil.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+PgCbUtil_Device_CoInstaller_CopyFiles = 11
+
+; ================= Class section =====================
+
+[ClassInstall32]
+Addreg=SampleClassReg
+
+[SampleClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-5
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+PgCbUtil.sys  = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%PgCbUtil.DeviceDesc%=PgCbUtil_Device, Root\PgCbUtil ; TODO: edit hw-id
+
+[PgCbUtil_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+PgCbUtil.sys
+
+;-------------- Service installation
+[PgCbUtil_Device.NT.Services]
+AddService = PgCbUtil,%SPSVCINST_ASSOCSERVICE%, PgCbUtil_Service_Inst
+
+; -------------- PgCbUtil driver install sections
+[PgCbUtil_Service_Inst]
+DisplayName    = %PgCbUtil.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\PgCbUtil.sys
+
+;
+;--- PgCbUtil_Device Coinstaller installation ------
+;
+
+[PgCbUtil_Device.NT.CoInstallers]
+AddReg=PgCbUtil_Device_CoInstaller_AddReg
+CopyFiles=PgCbUtil_Device_CoInstaller_CopyFiles
+
+[PgCbUtil_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[PgCbUtil_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[PgCbUtil_Device.NT.Wdf]
+KmdfService =  PgCbUtil, PgCbUtil_wdfsect
+[PgCbUtil_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+ClassName="Samples" ; TODO: edit ClassName
+DiskName = "PgCbUtil Installation Disk"
+PgCbUtil.DeviceDesc = "PgCbUtil Device"
+PgCbUtil.SVCDESC = "PgCbUtil Service"
