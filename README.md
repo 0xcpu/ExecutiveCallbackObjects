@@ -7,7 +7,7 @@ OS Version: Windows 10 Pro Insiders Preview 20H1 19008 or later
 
 ## [542875F90F9B47F497B64BA219CACF69](542875F90F9B47F497B64BA219CACF69)
 
-## AfdTdxCallback
+## [AfdTdxCallback](AfdTdxCallback)
 
 ## [EnlightenmentState](EnlightenmentState)
 
