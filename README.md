@@ -11,7 +11,7 @@ OS Version: Windows 10 Pro Insiders Preview 20H1 19008 or later
 
 ## [EnlightenmentState](EnlightenmentState)
 
-## IoExternalDmaUnblock
+## [IoExternalDmaUnblock](IoExternalDmaUnblock)
 
 ## IoSessionNotifications
 
