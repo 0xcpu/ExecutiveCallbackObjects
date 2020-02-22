@@ -547,16 +547,7 @@ typedef struct _ModulePaddingData
 } ModulePaddingData, *PModulePaddingData;
 ```
 
-the pointer where the `StartOffset` is going to be added is contained in `PgCheckEntryType.EntryConst1` and with this data the `checksum algorithm` will be executed. In the other case, where `PgCheckEntryType.EntryConst4 != 0` the array of structures is going to be pointed by `PgCheckEntryType.Data` and the definition of this structure is a bit different 
-
-```C
-typedef struct _ModulePaddingData1
-{
-    DWORD   EndOffset;
-    DWORD   StartOffset;
-    DWORD   Unknown;     // At least on this verify routine we didn't see this value being used
-} ModulePaddingData1, *PModulePaddingData1;
-```
+the pointer where the `StartOffset` is going to be added is contained in `PgCheckEntryType.EntryConst1` and with this data the `checksum algorithm` will be executed. In the other case, where `PgCheckEntryType.EntryConst4 != 0` the array of structures is going to be pointed by `PgCheckEntryType.Data` and the definition of this structure resembles `_IMAGE_RUNTIME_FUNCTION_ENTRY` definition.
 
 The number of entries comes defined by the relation `PgCheckEntryType.EntryConst4 / 0xC` with this information the code will iterate over the entries and again using `PgCheckEntryType.EntryConst1` as the base to add the `StartOffset` it will compute using the `checksum algorithm` but this time just for a byte that will be compared against the expected value that in this case is right after the entry header. Using this latter case to check doesn't mean the first is not going to be done, but in this case to get to the `ModulePaddingData` array the code will compute the offset in the data by using what looks like a magic number division (`0x2AAAAAAAAAAAAAAB`)
 
@@ -588,14 +579,18 @@ When all the sections are verified the check is done.
 
 We will analyze this three checks together since they are quite similar, first **SessionFunctionOrPdata** will check if there is a [SessionObject](PgCtx.h#L308) in case there is no the check will jump into the general check, if there is a session object, the page aligned data will be obtained from `PgCheckEntryType.Data` and passed as an argument to `MmIsAddressValid` in case this function fails the system will bugcheck, if it doesn't fail then the `checksum algorithm` will be applied with the `PgCheckEntryType.Data` and `PgCheckEntryType.DataSize`. 
 
-For cases **FunctionOrPdata** and **FunctionOrPdata1**, both will start by first doing the already known `checksum algoritm` if everything is correct, then the paths will split. We will first focus on the **FunctionOrPdata** which is a bit more simple. For this check, the `PgCheckEntryType.Data` points to an array of structures that have the following definition:
+For cases **FunctionOrPdata** and **FunctionOrPdata1**, both will start by first doing the already known `checksum algoritm` if everything is correct, then the paths will split. We will first focus on the **FunctionOrPdata** which is a bit more simple. For this check, the `PgCheckEntryType.Data` points to an array of `_IMAGE_RUNTIME_FUNCTION_ENTRY` structures:
 ```C
-typedef struct _FunctionOrPdata
-{   
-    DWORD   StartFunctionOrPdata;
-    DWORD   EndFunctionOrPdata;
-    DWORD   Unknown;
-} FunctionOrPdata, *PFunctionOrPdata;
+typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY
+{
+    ULONG BeginAddress;
+    ULONG EndAddress;
+    union
+    {
+        ULONG UnwindInfoAddress;
+        ULONG UnwindData;
+    };
+} IMAGE_RUNTIME_FUNCTION_ENTRY, *PIMAGE_RUNTIME_FUNCTION_ENTRY;
 ```
 with this structure and taking into account that the base address of the module where the function or data is located is in the field `PgCheckEntryType.EntryConst3`, the code will iterate each entry of the array and use the `checksum algorithm` to prove if the expected checksum is obtained, this expected checksums are saved in order after the entry header. 
 
@@ -619,7 +614,7 @@ FF D1                   call   rcx
 C3                      ret
 ```
 
-This snippet will basically return the first 8 bytes from the function or pdata, and in this case this value is the one that's going to be used as the key to calculate the checksum that will be returned from `PgCbHandleFunctionOrPdata1`. Before comparing this checksum agains the expected value (As in **FunctionOrPdata** the expected checksum is after the entry header) the check will again test if the `FunctionOrPdata - 0x6` match the pattern and in case it does it will compose a new idt decriptor for `INT 01`, modify the `IDTR`, write `0xF1` in the `FunctionOrPdata - 0x1` and call the function `KeDispatchCall(pFunctionOrPdataMinusOne)`. Since `OxF1 == icebp` which triggers an `INT 01`, the trap will be handle by the new `ISR`. This can be seen in the following pseudocode (similar to IDT and GDT case):
+This snippet will basically return the first 8 bytes from the function or pdata, and in this case this value is the one that's going to be used as the key to calculate the checksum that will be returned from `PgCbHandleFunctionOrPdata1`. Before comparing this checksum agains the expected value (As in **FunctionOrPdata** the expected checksum is after the entry header) the check will again test if the `FunctionOrPdata - 0x6` match the pattern and in case it does it will compose a new idt decriptor for `INT 01`, modify the `IDTR`, write `0xF1` in the `FunctionOrPdata - 0x1` and call the function `KeDispatchCall(pFunctionOrPdataMinusOne)`. Since `OxF1 == icebp` which triggers an `INT 01`, the trap will be handled by the new `ISR`. This can be seen in the following pseudocode (similar to IDT and GDT case):
 
 ```C
 NewIdtBase[1]  = PgCtx->IdtEntryIdx1;
@@ -738,6 +733,65 @@ If everything is fine then the function will proceed with another check, this ne
 There's one last case, which will proceed almost the same as the one explained above, with the CRC and the modified SHA256 but this time some data will be saved (PageBase, SizeOfPage, ModifiedSha256) in an array of structures which is pointed by [PageHashMismatchRelated](PgCtx.h#L344) also in this case the Modified Sha256 is calculated and saved in the structure in a function we named `PgComputeParallelSha256Derivation`
 
 ![page_hash_mismatch](images/page_hash_mismatch.png)
+
+#### KernelNotificationCallout
+
+This check logically can be split in two parts. The first part is basically in charge of checking different types of callbacks. Which type of callback is checked depends on the value coming from `MSSEC_PG_CB_ARG2.field4`. For example, when the value is _0_ - `CmpEnumerateCallback` is going to be verified. Every check can be grossly seen as an iteration over every entry (callback routine) and a call to [RtlPcToFileHeader](https://docs.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlpctofileheader). The failing case of every check is when the return value from the call is `NULL` (as specified in the documentation), which means that the callback is not inside a module. 
+Here's a short snippet of how a check is done:
+```C
+CallbackIterator = NULL;
+CurrIrql = KeGetCurrentIrql();
+__writecr8(0xC);
+for (CallbackAddress = PgCtx->DbgEnumerateCallback(&CallbackIterator);
+     CallbackAddress;
+     CallbackAddress = PgCtx->DbgEnumerateCallback(&CallbackIterator))
+{
+  if (!PgCtx->RtlPcToFileHeader(CallbackAddress, &BaseAddress))
+  {
+    // copy entries of current PgCheckTypeEntry to PgCtx
+    // encode pointers...
+    ...
+    PgCtx->SomethingWentWrong = 1;
+    ...
+  }
+}
+__writecr8(CurrIrql);
+goto check_if_SomethingWentWrong_is_set;
+```
+
+Here is a list of all callbacks that we saw being checked:
+- CmpEnumerateCallback
+- DbgEnumerateCallback
+- PspEnumerateCallback
+- KiEnumerateCallback
+- ExpGetNextCallback
+
+An additional check is done before getting into the second part. When `PgCheckTypeEntry.EntryConst5` is not _0_, its value is compared to the value of [PgCtx->KiEntropyTimingRoutine](PgCtx.h#L138) (which is a pointer to a pointer to `cng!EntropyTimingCallback`). These values are expected to be the same.
+
+Second part, consists of a series of `PgCheckTypeEntry` initializations. One important thing to mention here is that an auxilliary function is used for extending the `PgCtx` (along with every `PgCheckTypeEntry`) in order to store the new entry/entries that is/are going to be initialized. The contents of the previous pool are copied into the new one, and the previous is cleared. We're not going to dwelve into the internals of this function (we named `PgKCalloutAllocPool`)*, but for the curios ones it's located at (RVA) `+0x8BDB30` and it has the following prototype:
+```C
+PPgCtx __fastcall PgKCalloutAllocPool(
+  PPgCtx PgCtx,
+  ULONG NewSize,
+  ULONG AllocationType
+);
+```
+
+These are the types that can be initialized:
+- LoadConfigDirectory
+- ModulePadding
+- GenericDataRegion, GenericSessionDataRegion
+- ImageIntegrity
+- RetpolineCodePage
+- ImportTable, SessionImportTable
+- PageHashMismatch, SessionPageHashMismatch
+  > The initialization of this entries is done inside another function* that can be found at (RVA) `+0x8C69E4`.
+- FunctionOrPdata, SessionFunctionOrPdata, FunctionOrPdata1
+  > The initialization of this entries is done inside another function* that can be found at (RVA) `+0x8BD098`.
+
+Our guess about why these entries can be initialized in this check is that all of them are _volatile_ / _dynamic_ entries. What we mean by this is the during the execution cycle the number of modules, import tables and so on may change.
+
+\* All these functions can be called from other `PatchGuard` functions.
 
 #### Rest of Type Checks
 
